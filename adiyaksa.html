@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tetris Klasik Lengkap</title>
+    
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background-color: #333;
+            color: #fff;
+            margin: 0;
+        }
+
+        .game-container {
+            display: flex;
+            gap: 40px;
+            background-color: #222;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 20px;
+            color: #00ffc4;
+            text-shadow: 0 0 5px #00ffc4;
+        }
+
+        /* Pengaturan GRID Tetris */
+        #grid {
+            width: 200px; 
+            height: 400px; 
+            background-color: #111;
+            display: flex;
+            flex-wrap: wrap;
+            border: 5px solid #000;
+            box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.9);
+        }
+
+        /* Setiap Kotak (Cell) di dalam Grid */
+        .square {
+            width: 20px;
+            height: 20px;
+            box-sizing: border-box;
+            border: 1px solid #000; 
+        }
+
+        /* Class untuk blok aktif */
+        .block {
+            border: 3px outset #eee; /* Efek 3D ringan */
+        }
+        
+        /* Warna untuk setiap Tetromino */
+        .I-block { background-color: cyan; }
+        .J-block { background-color: blue; }
+        .L-block { background-color: orange; }
+        .O-block { background-color: yellow; }
+        .S-block { background-color: green; }
+        .T-block { background-color: purple; }
+        .Z-block { background-color: red; }
+        
+        /* Blok yang sudah terkunci */
+        .taken {
+            border: 1px solid #000;
+            opacity: 0.7;
+        }
+
+        .sidebar {
+            padding-top: 50px;
+        }
+
+        .sidebar p {
+            font-size: 1.2em;
+            margin: 15px 0;
+        }
+        
+        #start-button {
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            margin-top: 20px;
+            display: block;
+            width: 100%;
+            background-color: #00ffc4;
+            border: none;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+
+        .controls-info {
+            font-size: 0.9em;
+            color: #aaa;
+            margin-top: 30px;
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <div id="grid"></div>
+
+        <div class="sidebar">
+            <h1>T E T R I S</h1>
+            <p>Skor: <span id="score">0</span></p>
+            <p>Level: <span id="level">1</span></p>
+            <button id="start-button">Mulai Game</button>
+            <p id="game-status"></p>
+            <p class="controls-info">
+                Kontrol:<br>
+                ← / → : Pindah<br>
+                ↓ : Jatuh Cepat<br>
+                Spasi : Putar
+            </p>
+        </div>
+    </div>
+
+    <script>
+        // --- Konstanta Dasar ---
+        const grid = document.getElementById('grid');
+        const scoreDisplay = document.getElementById('score');
+        const startButton = document.getElementById('start-button');
+        const statusDisplay = document.getElementById('game-status');
+        const width = 10; // Lebar grid (10 kotak)
+        const height = 20; // Tinggi grid (20 kotak)
+        let squares = []; 
+        let currentPosition = 4; 
+        let score = 0;
+        let timerId = null; 
+        let nextRandom = 0;
+        let isGameOver = false;
+
+        // --- Data Tetrominoes ---
+        // Setiap array dalam array adalah representasi dari satu rotasi
+        const lTetromino = [
+            [1, width + 1, width * 2 + 1, 2],
+            [width, width + 1, width + 2, width * 2 + 2],
+            [1, width + 1, width * 2 + 1, width * 2],
+            [width, width * 2, width * 2 + 1, width * 2 + 2]
+        ];
+
+        const zTetromino = [
+            [0, width, width + 1, width * 2 + 1],
+            [width + 1, width + 2, width * 2, width * 2 + 1],
+            [0, width, width + 1, width * 2 + 1],
+            [width + 1, width + 2, width * 2, width * 2 + 1]
+        ];
+
+        const tTetromino = [
+            [1, width, width + 1, width + 2],
+            [1, width + 1, width + 2, width * 2 + 1],
+            [width, width + 1, width + 2, width * 2 + 1],
+            [1, width, width + 1, width * 2 + 1]
+        ];
+
+        const oTetromino = [
+            [0, 1, width, width + 1],
+            [0, 1, width, width + 1],
+            [0, 1, width, width + 1],
+            [0, 1, width, width + 1]
+        ];
+
+        const iTetromino = [
+            [1, width + 1, width * 2 + 1, width * 3 + 1],
+            [width, width + 1, width + 2, width + 3],
+            [1, width + 1, width * 2 + 1, width * 3 + 1],
+            [width, width + 1, width + 2, width + 3]
+        ];
+        
+        // Simpan semua balok dan nama class-nya
+        const theTetrominoes = [lTetromino, zTetromino, tTetromino, oTetromino, iTetromino];
+        const colors = ['L-block', 'Z-block', 'T-block', 'O-block', 'I-block'];
+
+        let random = Math.floor(Math.random() * theTetrominoes.length);
+        let currentTetromino = theTetrominoes[random][0];
+        let currentColor = colors[random];
+        let currentRotation = 0;
+
+
+        // --- 1. Fungsi Membuat Grid ---
+        function createGrid() {
+            grid.innerHTML = ''; 
+            squares = []; 
+
+            for (let i = 0; i < width * height; i++) {
+                const square = document.createElement('div');
+                square.classList.add('square');
+                grid.appendChild(square);
+                squares.push(square);
+            }
+            // Tambahkan baris "dasar" untuk tabrakan (2 baris di bawah)
+            for (let i = 0; i < width * 2; i++) {
+                const square = document.createElement('div');
+                square.classList.add('square', 'taken'); 
+                grid.appendChild(square);
+                squares.push(square);
+            }
+        }
+
+        // --- 2. Fungsi Menggambar Balok ---
+        function draw() {
+            currentTetromino.forEach(index => {
+                squares[currentPosition + index].classList.add('block', currentColor);
+            });
+        }
+
+        // --- 3. Fungsi Menghapus Balok ---
+        function undraw() {
+            currentTetromino.forEach(index => {
+                squares[currentPosition + index].classList.remove('block', currentColor);
+            });
+        }
+
+        // --- 4. Fungsi Gerak Turun (Otomatis) ---
+        function moveDown() {
+            if (isGameOver) return;
+            undraw();
+            
+            // Pengecekan tabrakan ke bawah
+            const isAtBottom = currentTetromino.some(index =>
+                squares[currentPosition + index + width] && squares[currentPosition + index + width].classList.contains('taken')
+            );
+
+            if (isAtBottom) {
+                freeze();
+                generateNewTetromino();
+                return;
+            }
+
+            currentPosition += width;
+            draw();
+        }
+
+        // --- 5. Fungsi Mengunci Balok (Freeze) ---
+        function freeze() {
+            currentTetromino.forEach(index =>
+                squares[currentPosition + index].classList.add('taken', currentColor)
+            );
+            checkRows();
+            checkGameOver();
+        }
+
+        // --- 6. Fungsi Balok Baru ---
+        function generateNewTetromino() {
+            random = nextRandom || Math.floor(Math.random() * theTetrominoes.length);
+            nextRandom = Math.floor(Math.random() * theTetrominoes.length);
+            
+            currentTetromino = theTetrominoes[random][0];
+            currentColor = colors[random];
+            currentRotation = 0;
+            currentPosition = 4;
+
+            draw();
+        }
+        
+        // --- 7. Fungsi Kontrol Keyboard ---
+        function control(e) {
+            if (timerId === null || isGameOver) return; 
+
+            if (e.key === 'ArrowLeft') {
+                moveLeft();
+            } else if (e.key === 'ArrowRight') {
+                moveRight();
+            } else if (e.key === 'ArrowDown') {
+                moveDown();
+            } else if (e.key === ' ') { // Spasi untuk Rotasi
+                rotate();
+            }
+        }
+        document.addEventListener('keydown', control);
+
+        function moveLeft() {
+            undraw();
+            const isAtLeftEdge = currentTetromino.some(index => (currentPosition + index) % width === 0);
+            
+            if (!isAtLeftEdge) currentPosition -= 1;
+
+            // Pengecekan jika balok menabrak balok lain setelah digeser
+            if (currentTetromino.some(index => squares[currentPosition + index].classList.contains('taken'))) {
+                currentPosition += 1;
+            }
+            draw();
+        }
+
+        function moveRight() {
+            undraw();
+            const isAtRightEdge = currentTetromino.some(index => (currentPosition + index) % width === width - 1);
+            
+            if (!isAtRightEdge) currentPosition += 1;
+
+            // Pengecekan jika balok menabrak balok lain setelah digeser
+            if (currentTetromino.some(index => squares[currentPosition + index].classList.contains('taken'))) {
+                currentPosition -= 1;
+            }
+            draw();
+        }
+
+        function rotate() {
+             undraw();
+             currentRotation++;
+             if (currentRotation === theTetrominoes[random].length) { 
+                 currentRotation = 0;
+             }
+             currentTetromino = theTetrominoes[random][currentRotation];
+             draw();
+        }
+
+        // --- 8. Fungsi Pengecekan Baris Penuh ---
+        function checkRows() {
+            for (let i = 0; i < height * width; i += width) {
+                const row = Array.from(squares.slice(i, i + width));
+
+                // Cek apakah seluruh baris memiliki class 'taken' (terisi)
+                if (row.every(square => square.classList.contains('taken'))) {
+                    score += 10;
+                    scoreDisplay.textContent = score;
+
+                    // Hapus baris
+                    row.forEach(square => {
+                        square.classList.remove('taken', 'block', ...colors);
+                    });
+
+                    // Pindahkan sisa grid ke bawah (mengganti baris yang kosong)
+                    const squaresRemoved = squares.splice(i, width);
+                    squares = squaresRemoved.concat(squares);
+                    squares.forEach(cell => grid.appendChild(cell));
+                }
+            }
+        }
+
+        // --- 9. Fungsi Game Over ---
+        function checkGameOver() {
+            if (currentTetromino.some(index => squares[currentPosition + index].classList.contains('taken'))) {
+                isGameOver = true;
+                clearInterval(timerId);
+                timerId = null;
+                statusDisplay.textContent = 'GAME OVER! Skor Akhir: ' + score;
+                startButton.textContent = 'Main Lagi';
+            }
+        }
+
+        // --- 10. Fungsi Mulai/Jeda Game ---
+        function startGame() {
+            if (timerId) {
+                // Jeda Game
+                clearInterval(timerId); 
+                timerId = null;
+                startButton.textContent = 'Lanjutkan';
+                statusDisplay.textContent = 'Game Dijeda';
+            } else {
+                if (isGameOver) {
+                    // Reset game state jika Game Over
+                    isGameOver = false;
+                    score = 0;
+                    scoreDisplay.textContent = 0;
+                    createGrid();
+                } else if (squares.length === 0) {
+                     // Inisialisasi awal
+                    createGrid();
+                }
+                
+                statusDisplay.textContent = 'Bermain...';
+                generateNewTetromino(); // Panggil balok baru (atau balok yang ada jika jeda)
+                
+                // Mulai Game Loop (Turun setiap 1 detik, bisa disesuaikan kecepatannya)
+                timerId = setInterval(moveDown, 1000); 
+                startButton.textContent = 'Jeda';
+            }
+        }
+
+        // --- Inisialisasi ---
+        startButton.addEventListener('click', startGame);
+
+    </script>
+</body>
+</html>
